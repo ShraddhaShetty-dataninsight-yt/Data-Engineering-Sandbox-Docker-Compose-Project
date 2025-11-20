@@ -1,33 +1,30 @@
-Quick run steps
+### Quick run steps
 
 From repo root:
-
-Build spark images and start stack:
+#### Build spark images and start stack:
 `docker compose build`
 `docker compose up -d`
-
+----
 Initialize Airflow DB (first run):
 
-# run once - create DB and user
+#### run once - create DB and user
 
-`docker exec -it de_airflow bash -c "airflow db upgrade && \
-  airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && \
-  airflow scheduler & airflow webserver -p 8080"`
+`docker exec -it de_airflow bash -c "airflow db upgrade && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && airflow scheduler & airflow webserver -p 8080"`
+----
 
-
-Initialize Superset (first run):
+#### Initialize Superset (first run):
 
 `docker exec -it de_superset superset db upgrade`
 `docker exec -it de_superset superset fab create-admin --username admin --firstname Admin --lastname User --password admin --email admin@example.com`
 `docker exec -it de_superset superset init`
+-----
 
-
-Create a Kafka topic:
+#### Create a Kafka topic:
 
 `docker exec -it de_kafka kafka-topics --create --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic test || true`
+-----
 
-
-Open UIs:
+#### Open UIs:
 
 | Components | url |
 |-----------|------|
@@ -41,7 +38,7 @@ Open UIs:
 | MinIO Console | http://localhost:9001 (minioadmin/minioadmin)|
 
 
-Notes, caveats & tips
+#### Notes, caveats & tips
 - Resources: 5 Spark workers + other services need significant RAM/CPU. On a typical dev laptop you may want to reduce workers to 1–2 via docker-compose.override.yml.
 - JARs: For Kafka read/write from Spark streaming you should put spark-sql-kafka-0-10_2.12 jar into spark/jars matching the Spark/Scala version.
 - Airflow image official entrypoint needs extra one-time init steps (I provided commands above). If you want an automated init, I can add an init container/task to do it.
