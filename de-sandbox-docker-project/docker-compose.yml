@@ -1,71 +1,211 @@
 version: "3.8"
 
-
 services:
-# -----------------
-# Zookeeper
-# -----------------
-zookeeper:
-image: confluentinc/cp-zookeeper:7.6.0
-container_name: de_zookeeper
-restart: unless-stopped
-environment:
-ZOOKEEPER_CLIENT_PORT: 2181
-ports:
-- "2181:2181"
+
+  # ----------------------------------------------------
+  # ZOOKEEPER
+  # ----------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: de_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # KAFKA
+  # ----------------------------------------------------
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: de_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # SCHEMA REGISTRY
+  # ----------------------------------------------------
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    container_name: de_schema_registry
+    depends_on:
+      - kafka
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    ports:
+      - "8081:8081"
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # KAFKA CONNECT
+  # ----------------------------------------------------
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.0
+    container_name: de_kafka_connect
+    depends_on:
+      - kafka
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: "shraddha-connect"
+      CONNECT_CONFIG_STORAGE_TOPIC: connect_configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect_offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect_statuses
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # REDIS
+  # ----------------------------------------------------
+  redis:
+    image: redis:latest
+    container_name: de_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # MARIADB
+  # ----------------------------------------------------
+  mariadb:
+    image: mariadb:11
+    container_name: de_mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: de_db
+    ports:
+      - "3306:3306"
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # POSTGRES
+  # ----------------------------------------------------
+  postgres:
+    image: postgres:15
+    container_name: de_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: de_db
+    ports:
+      - "5432:5432"
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # SPARK MASTER
+  # ----------------------------------------------------
+  spark-master:
+    image: bitnami/spark:3.5.1
+    container_name: spark_master
+    environment:
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # SPARK WORKERS (5 WORKERS)
+  # ----------------------------------------------------
+  spark-worker-1:
+    image: bitnami/spark:3.5.1
+    container_name: spark_worker_1
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - de-net
+
+  spark-worker-2:
+    image: bitnami/spark:3.5.1
+    container_name: spark_worker_2
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - de-net
+
+  spark-worker-3:
+    image: bitnami/spark:3.5.1
+    container_name: spark_worker_3
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    networks:
+      - de-net
+
+  spark-worker-4:
+    image: bitnami/spark:3.5.1
+    container_name: spark_worker_4
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    networks:
+      - de-net
+
+  spark-worker-5:
+    image: bitnami/spark:3.5.1
+    container_name: spark_worker_5
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    networks:
+      - de-net
+
+  # ----------------------------------------------------
+  # JUPYTER NOTEBOOK (PYSPARK + SCALA + SQL SUPPORT)
+  # ----------------------------------------------------
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    container_name: de_jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      JUPYTER_TOKEN: "shraddha_youtube"
+      NOTEBOOK_BRAND: "ShraddhaShetty • DataNInsight YouTube"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    depends_on:
+      - spark-master
+    networks:
+      - de-net
+
+# ----------------------------------------------------
+# NETWORKS
+# ----------------------------------------------------
 networks:
-- de-net
-
-
-# -----------------
-# Kafka Broker
-# -----------------
-kafka:
-image: confluentinc/cp-kafka:7.6.0
-container_name: de_kafka
-depends_on:
-- zookeeper
-ports:
-- "9092:9092"
-environment:
-KAFKA_BROKER_ID: 1
-KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-networks:
-- de-net
-
-
-# -----------------
-# Schema Registry
-# -----------------
-schema-registry:
-image: confluentinc/cp-schema-registry:7.6.0
-container_name: de_schema_registry
-depends_on:
-- zookeeper
-- kafka
-ports:
-- "8081:8081"
-environment:
-SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
-SCHEMA_REGISTRY_HOST_NAME: schema-registry
-SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-networks:
-- de-net
-
-
-# -----------------
-# Kafka Connect
-# -----------------
-kafka-connect:
-image: confluentinc/cp-kafka-connect:7.6.0
-container_name: de_kafka_connect
-depends_on:
-- kafka
-- schema-registry
-ports:
-driver: bridge
+  de-net:
+    driver: bridge
