@@ -1,0 +1,30 @@
+FROM openjdk:17-jdk-slim
+
+
+# Install dependencies
+RUN apt-get update && apt-get install -y curl scala python3 python3-pip bash netcat && rm -rf /var/lib/apt/lists/*
+
+
+# Spark version
+ENV SPARK_VERSION=3.5.0
+ENV HADOOP_VERSION=3
+
+
+# Download Spark
+RUN curl -SL https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz \
+| tar -xz -C /opt && \
+mv /opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} /opt/spark
+
+
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
+
+
+# Create spark user
+RUN useradd -m spark
+USER spark
+WORKDIR /home/spark
+
+
+# Copy optional jars (connectors, delta) into spark jars dir at runtime via volume
+# (keep as-is so docker-compose can mount ./
