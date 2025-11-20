@@ -1,10 +1,9 @@
 version: "3.8"
 
 services:
-
-  # ----------------------------------------------------
-  # ZOOKEEPER
-  # ----------------------------------------------------
+  # -------------------------
+  # Zookeeper (Kafka)
+  # -------------------------
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: de_zookeeper
@@ -15,9 +14,9 @@ services:
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # KAFKA
-  # ----------------------------------------------------
+  # -------------------------
+  # Kafka Broker
+  # -------------------------
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: de_kafka
@@ -37,9 +36,9 @@ services:
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # SCHEMA REGISTRY
-  # ----------------------------------------------------
+  # -------------------------
+  # Schema Registry
+  # -------------------------
   schema-registry:
     image: confluentinc/cp-schema-registry:7.6.0
     container_name: de_schema_registry
@@ -53,9 +52,9 @@ services:
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # KAFKA CONNECT
-  # ----------------------------------------------------
+  # -------------------------
+  # Kafka Connect
+  # -------------------------
   kafka-connect:
     image: confluentinc/cp-kafka-connect:7.6.0
     container_name: de_kafka_connect
@@ -74,138 +73,246 @@ services:
       CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
       CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_PLUGIN_PATH: /usr/share/java
+    volumes:
+      - ./spark/jars:/usr/share/java
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # REDIS
-  # ----------------------------------------------------
+  # -------------------------
+  # Redis
+  # -------------------------
   redis:
-    image: redis:latest
+    image: redis:7.2
     container_name: de_redis
     ports:
       - "6379:6379"
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # MARIADB
-  # ----------------------------------------------------
+  # -------------------------
+  # MariaDB
+  # -------------------------
   mariadb:
     image: mariadb:11
     container_name: de_mariadb
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: de_db
+      MYSQL_USER: de_user
+      MYSQL_PASSWORD: de_pass
     ports:
       - "3306:3306"
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # POSTGRES
-  # ----------------------------------------------------
+  # -------------------------
+  # PostgreSQL (used also by Airflow)
+  # -------------------------
   postgres:
     image: postgres:15
     container_name: de_postgres
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: de_db
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow_db
     ports:
       - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # SPARK MASTER
-  # ----------------------------------------------------
+  # -------------------------
+  # MinIO (S3-compatible)
+  # -------------------------
+  minio:
+    image: minio/minio:RELEASE.2025-01-01T00-00-00Z
+    container_name: de_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./data/minio:/data
+    networks:
+      - de-net
+
+  # -------------------------
+  # Spark Master (builds from spark/Dockerfile for Scala + PySpark + libs)
+  # -------------------------
   spark-master:
-    image: bitnami/spark:3.5.1
-    container_name: spark_master
+    build: ./spark
+    container_name: spark-master
     environment:
       SPARK_MODE: master
-      SPARK_MASTER_HOST: spark-master
+      # event log dir for history server
+      SPARK_HISTORY_OPTS: -Dspark.history.fs.logDirectory=/spark-events
     ports:
       - "8080:8080"
       - "7077:7077"
+    volumes:
+      - ./spark/jars:/opt/spark/jars
+      - ./spark/events:/spark-events
+      - ./sql:/opt/sql-scripts
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # SPARK WORKERS (5 WORKERS)
-  # ----------------------------------------------------
+  # -------------------------
+  # Spark Workers (5 workers) - build same image
+  # -------------------------
   spark-worker-1:
-    image: bitnami/spark:3.5.1
-    container_name: spark_worker_1
+    build: ./spark
+    container_name: spark-worker-1
+    depends_on:
+      - spark-master
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
-    depends_on:
-      - spark-master
+    volumes:
+      - ./spark/jars:/opt/spark/jars
     networks:
       - de-net
 
   spark-worker-2:
-    image: bitnami/spark:3.5.1
-    container_name: spark_worker_2
+    build: ./spark
+    container_name: spark-worker-2
+    depends_on:
+      - spark-master
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
-    depends_on:
-      - spark-master
+    volumes:
+      - ./spark/jars:/opt/spark/jars
     networks:
       - de-net
 
   spark-worker-3:
-    image: bitnami/spark:3.5.1
-    container_name: spark_worker_3
+    build: ./spark
+    container_name: spark-worker-3
+    depends_on:
+      - spark-master
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
+    volumes:
+      - ./spark/jars:/opt/spark/jars
     networks:
       - de-net
 
   spark-worker-4:
-    image: bitnami/spark:3.5.1
-    container_name: spark_worker_4
+    build: ./spark
+    container_name: spark-worker-4
+    depends_on:
+      - spark-master
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
+    volumes:
+      - ./spark/jars:/opt/spark/jars
     networks:
       - de-net
 
   spark-worker-5:
-    image: bitnami/spark:3.5.1
-    container_name: spark_worker_5
+    build: ./spark
+    container_name: spark-worker-5
+    depends_on:
+      - spark-master
     environment:
       SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
+    volumes:
+      - ./spark/jars:/opt/spark/jars
     networks:
       - de-net
 
-  # ----------------------------------------------------
-  # JUPYTER NOTEBOOK (PYSPARK + SCALA + SQL SUPPORT)
-  # ----------------------------------------------------
+  # -------------------------
+  # Spark History Server
+  # -------------------------
+  spark-history:
+    build: ./spark
+    container_name: spark-history
+    command: bash -c "start-history-server.sh"
+    environment:
+      SPARK_MODE: history
+    volumes:
+      - ./spark/events:/spark-events
+      - ./spark/jars:/opt/spark/jars
+    ports:
+      - "18080:18080"
+    networks:
+      - de-net
+
+  # -------------------------
+  # Jupyter (PySpark + Scala support)
+  # -------------------------
   jupyter:
     image: jupyter/pyspark-notebook:latest
     container_name: de_jupyter
-    ports:
-      - "8888:8888"
     environment:
       SPARK_MASTER: spark://spark-master:7077
+      JUPYTER_ENABLE_LAB: "yes"
       JUPYTER_TOKEN: "shraddha_youtube"
-      NOTEBOOK_BRAND: "ShraddhaShetty • DataNInsight YouTube"
+    ports:
+      - "8888:8888"
     volumes:
       - ./notebooks:/home/jovyan/work
+      - ./spark/jars:/home/jovyan/jars
     depends_on:
       - spark-master
     networks:
       - de-net
 
-# ----------------------------------------------------
-# NETWORKS
-# ----------------------------------------------------
+  # -------------------------
+  # Airflow (LocalExecutor) - requires Postgres (above)
+  # -------------------------
+  airflow:
+    image: apache/airflow:2.6.3
+    container_name: de_airflow
+    restart: unless-stopped
+    env_file:
+      - ./airflow/.env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow_db
+      AIRFLOW__CORE__FERNET_KEY: "fernet_key_here"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    ports:
+      - "8082:8080"
+    depends_on:
+      - postgres
+      - spark-master
+    networks:
+      - de-net
+
+  # -------------------------
+  # Superset (dashboard)
+  # -------------------------
+  superset:
+    image: apache/superset:latest
+    container_name: de_superset
+    environment:
+      SUPERSET_LOAD_EXAMPLES: "yes"
+      # superset needs a metadata DB; for production use configure properly
+      SUPERSET_DATABASE_URI: postgresql+psycopg2://airflow:airflow@postgres/airflow_db
+    volumes:
+      - ./superset_home:/home/superset
+    ports:
+      - "8088:8088"
+    depends_on:
+      - postgres
+    networks:
+      - de-net
+
 networks:
   de-net:
     driver: bridge
