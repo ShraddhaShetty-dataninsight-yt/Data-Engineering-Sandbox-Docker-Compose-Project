@@ -3,12 +3,13 @@ Quick run steps
 From repo root:
 
 Build spark images and start stack:
-`docker compose build
-docker compose up -d`
+`docker compose build`
+`docker compose up -d`
 
 Initialize Airflow DB (first run):
 
 # run once - create DB and user
+
 `docker exec -it de_airflow bash -c "airflow db upgrade && \
   airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && \
   airflow scheduler & airflow webserver -p 8080"`
@@ -16,9 +17,9 @@ Initialize Airflow DB (first run):
 
 Initialize Superset (first run):
 
-`docker exec -it de_superset superset db upgrade
-docker exec -it de_superset superset fab create-admin --username admin --firstname Admin --lastname User --password admin --email admin@example.com
-docker exec -it de_superset superset init`
+`docker exec -it de_superset superset db upgrade`
+`docker exec -it de_superset superset fab create-admin --username admin --firstname Admin --lastname User --password admin --email admin@example.com`
+`docker exec -it de_superset superset init`
 
 
 Create a Kafka topic:
